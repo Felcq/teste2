@@ -1,0 +1,21 @@
+{
+  "name": "HeroQuest: A Campanha do Herói",
+  "short_name": "HeroQuest",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#374151",
+  "theme_color": "#d4af37",
+  "description": "Uma aventura de RPG de tabuleiro.",
+  "icons": [
+    {
+      "src": "https://www.gstatic.com/images/branding/product/1x/gemini_48dp.png",
+      "sizes": "48x48",
+      "type": "image/png"
+    },
+    {
+      "src": "https://www.gstatic.com/images/branding/product/1x/gemini_96dp.png",
+      "sizes": "96x96",
+      "type": "image/png"
+    }
+  ]
+}
