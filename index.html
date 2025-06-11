@@ -1,0 +1,1367 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>HeroQuest: A Campanha do Herói</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <link rel="manifest" href="manifest.json">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=MedievalSharp&family=IM+Fell+English+SC&display=swap" rel="stylesheet">
+    <style>
+        html, body {
+            height: 100%;
+            margin: 0;
+            font-family: 'IM Fell English SC', serif;
+            background-color: #374151; /* Cinza escuro */
+            overflow: hidden;
+        }
+        .game-title {
+            font-family: 'MedievalSharp', cursive;
+            color: #d4af37;
+            text-shadow: 2px 2px 4px #000;
+        }
+        #main-container {
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+            height: 100%;
+            max-width: 768px; /* md */
+            margin: 0 auto;
+            background-color: #374151;
+        }
+        #canvas-container {
+            flex-grow: 1; /* Ocupa o espaço disponível */
+            background-color: #000;
+            cursor: pointer;
+            position: relative;
+            min-height: 200px;
+        }
+        canvas {
+            display: block;
+        }
+        #mini-map-container {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background-color: rgba(0,0,0,0.7);
+            border: 2px solid #4a3f35;
+            padding: 5px;
+            z-index: 100;
+        }
+        #mini-map {
+            display: grid;
+            gap: 1px;
+        }
+        .mini-tile {
+            width: 8px;
+            height: 8px;
+        }
+        .modal {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: rgba(0,0,0,0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 200;
+        }
+        #toast-container {
+            position: fixed;
+            bottom: 12rem; /* Elevado para não cobrir os botões */
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 300;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            align-items: center;
+            pointer-events: none;
+        }
+        .toast {
+            animation: fade-in-out 4s ease-in-out forwards;
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.5rem;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.5);
+            font-size: 1.1rem;
+            border-width: 2px;
+        }
+        @keyframes fade-in-out {
+            0% { opacity: 0; transform: translateY(20px); }
+            10% { opacity: 1; transform: translateY(0); }
+            90% { opacity: 1; transform: translateY(0); }
+            100% { opacity: 0; transform: translateY(-20px); }
+        }
+        .hero-card {
+            transition: all 0.2s ease-in-out;
+        }
+        .hero-card.selected {
+            border-color: #fBBF24;
+            transform: scale(1.05);
+            box-shadow: 0 0 15px #fBBF24;
+        }
+         .spell-checkbox:checked + label {
+            border-color: #fBBF24;
+            background-color: #4f46e5;
+        }
+    </style>
+</head>
+<body class="text-gray-200">
+    
+    <div id="toast-container"></div>
+
+    <!-- ECRÃS MODAIS -->
+    <div id="start-screen" class="modal">
+        <div class="text-center bg-gray-800 p-8 rounded-lg border-4 border-amber-400">
+            <h2 class="game-title text-5xl mb-6">HeroQuest</h2>
+            <div class="flex flex-col gap-4">
+                <button onclick="showCharacterSelection('local')" class="text-white font-bold py-3 px-6 rounded-lg bg-green-700 hover:bg-green-800 transition-transform hover:scale-105">
+                    Jogar Local
+                </button>
+                <button class="text-white font-bold py-3 px-6 rounded-lg bg-gray-600 cursor-not-allowed" disabled>
+                    Jogar Online (Em Breve)
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <div id="character-selection" class="modal hidden">
+        <div class="text-center bg-gray-800 p-8 rounded-lg border-4 border-amber-400 max-w-4xl">
+            <h2 class="game-title text-5xl mb-6">Monte o seu Grupo</h2>
+            <div id="hero-selection-grid" class="grid grid-cols-2 md:grid-cols-4 gap-6 mb-6"></div>
+            <button id="start-game-btn" onclick="startGame()" class="text-white font-bold py-3 px-6 rounded-lg bg-green-700 hover:bg-green-800 disabled:bg-gray-500 disabled:cursor-not-allowed" disabled>
+                Iniciar Aventura
+            </button>
+        </div>
+    </div>
+
+    <div id="actions-modal" class="modal hidden">
+        <div class="w-full max-w-md bg-gray-800 p-6 rounded-lg border-4 border-amber-400 flex flex-col gap-4">
+             <h2 id="actions-modal-title" class="game-title text-4xl mb-4 text-center">Ações</h2>
+             <div id="sub-action-buttons" class="flex flex-col gap-3 min-h-[50px]"></div>
+             <button onclick="toggleModal('actions-modal', false)" class="mt-4 bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded">Fechar</button>
+        </div>
+    </div>
+    
+     <div id="magic-modal" class="modal hidden">
+        <div class="w-full max-w-lg bg-gray-800 p-6 rounded-lg border-4 border-amber-400 flex flex-col gap-4">
+             <h2 class="game-title text-4xl mb-4 text-center">Lançar Magia</h2>
+             <div id="spell-selection" class="flex flex-col gap-2"></div>
+             <div id="magic-target-selection" class="flex flex-col gap-2 mt-4"></div>
+             <button id="cast-spell-btn" onclick="handleCastSpell()" class="mt-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded" disabled>Lançar</button>
+             <button onclick="toggleModal('magic-modal', false)" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded">Cancelar</button>
+        </div>
+    </div>
+
+
+     <div id="backpack-modal" class="modal hidden">
+        <div class="w-full max-w-md bg-gray-800 p-6 rounded-lg border-4 border-amber-400 flex flex-col gap-4">
+             <h2 class="game-title text-4xl mb-4 text-center">Mochila</h2>
+             <div id="backpack-items" class="min-h-[100px] bg-gray-900 p-4 rounded">
+                <p class="text-gray-400">A sua mochila está vazia.</p>
+             </div>
+             <button onclick="toggleModal('backpack-modal', false)" class="mt-4 bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded">Fechar</button>
+        </div>
+    </div>
+
+     <div id="armor-modal" class="modal hidden">
+        <div class="w-full max-w-lg bg-gray-800 p-6 rounded-lg border-4 border-amber-400 flex flex-col gap-4">
+             <h2 class="game-title text-4xl mb-4 text-center">Equipamento</h2>
+             <div id="armor-slots" class="grid grid-cols-2 gap-4 text-lg">
+                <div class="bg-gray-900 p-3 rounded"><span class="text-amber-300">Cabeça:</span> <span id="slot-cabeça" class="text-gray-400 italic"></span></div>
+                <div class="bg-gray-900 p-3 rounded"><span class="text-amber-300">Rosto:</span> <span id="slot-rosto" class="text-gray-400 italic"></span></div>
+                <div class="bg-gray-900 p-3 rounded"><span class="text-amber-300">Pescoço:</span> <span id="slot-pescoço" class="text-gray-400 italic"></span></div>
+                <div class="bg-gray-900 p-3 rounded"><span class="text-amber-300">Braço:</span> <span id="slot-braço" class="text-gray-400 italic"></span></div>
+                <div class="bg-gray-900 p-3 rounded"><span class="text-amber-300">Mão Direita:</span> <span id="slot-mão-direita" class="text-gray-400 italic"></span></div>
+                <div class="bg-gray-900 p-3 rounded"><span class="text-amber-300">Mão Esquerda:</span> <span id="slot-mão-esquerda" class="text-gray-400 italic"></span></div>
+             </div>
+             <button onclick="toggleModal('armor-modal', false)" class="mt-4 bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded">Fechar</button>
+        </div>
+    </div>
+
+
+    <div id="main-container">
+        <h1 id="mission-title" class="game-title text-3xl md:text-5xl my-2 text-center"></h1>
+
+        <div id="canvas-container">
+            <div id="mini-map-container">
+                <p id="mini-map-title" class="text-center text-xs text-amber-300 mb-1"></p>
+                <div id="mini-map"></div>
+            </div>
+        </div>
+
+        <footer class="mt-2 p-2 bg-gray-800/50 border-t-4 border-gray-600">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+                <div class="bg-gray-900/50 p-3 rounded-lg border-2 border-gray-600">
+                    <h2 id="hero-name" class="text-xl text-amber-400 mb-2 border-b border-gray-600 pb-1"></h2>
+                    <div id="player-stats" class="grid grid-cols-2 gap-x-4 gap-y-1 text-sm"></div>
+                     <div id="movement-points-display" class="mt-2 text-base text-center text-green-400 font-bold"></div>
+                </div>
+                <div id="actions-panel" class="bg-gray-900/50 p-3 rounded-lg border-2 border-gray-600">
+                    <h2 class="text-xl text-amber-400 mb-2 border-b border-gray-600 pb-1">Controlo do Turno</h2>
+                    <div id="turn-buttons" class="grid grid-cols-2 gap-2"></div>
+                     <div id="camera-controls" class="flex gap-2 mt-2"></div>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <script>
+        // --- ESTADO DO JOGO ---
+        const TILE_TYPE = { WALL: 0, FLOOR: 1, DOOR: 2 };
+        let heroes = [];
+        let currentPlayerIndex = 0;
+        let monsters, mapLayout, traps;
+        let playerTurn = true, hasRolledForMove = false, hasActed = false;
+        let reachableTiles = new Map();
+        let currentMissionIndex = 0;
+
+        // --- VARIÁVEIS THREE.JS ---
+        let scene, camera, renderer, raycaster, mouse, cameraPivot;
+        let mapMeshes = { floors: [], walls: [], doors: [], traps: [] };
+        let heroMeshes = [];
+        let monsterMeshes = [];
+        let highlightedTiles = [];
+        const TILE_SIZE = 1;
+        let targetRotationY = 0;
+
+        // --- ELEMENTOS DO DOM ---
+        const canvasContainer = document.getElementById('canvas-container');
+        const playerStatsDiv = document.getElementById('player-stats');
+        const actionButtonsDiv = document.getElementById('turn-buttons');
+        const subActionButtonsDiv = document.getElementById('sub-action-buttons');
+        const movementPointsDiv = document.getElementById('movement-points-display');
+        const missionTitle = document.getElementById('mission-title');
+        const miniMapContainer = document.getElementById('mini-map');
+        const miniMapTitle = document.getElementById('mini-map-title');
+        const heroNameTitle = document.getElementById('hero-name');
+        const characterSelectionScreen = document.getElementById('character-selection');
+        const heroSelectionGrid = document.getElementById('hero-selection-grid');
+        const startGameBtn = document.getElementById('start-game-btn');
+        const cameraControlsDiv = document.getElementById('camera-controls');
+        const magicModal = document.getElementById('magic-modal');
+        const spellSelectionDiv = document.getElementById('spell-selection');
+        const magicTargetSelectionDiv = document.getElementById('magic-target-selection');
+        const castSpellBtn = document.getElementById('cast-spell-btn');
+
+        // --- DEFINIÇÕES DE DADOS ---
+        const items = {
+            broadsword: { name: "Espada Larga", type: "weapon", slot: "mão-direita", attack: 3, durability: 100 },
+            shortsword: { name: "Espada Curta", type: "weapon", slot: "mão-esquerda", attack: 2, durability: 100 },
+            axe: { name: "Machado", type: "weapon", slot: "mão-direita", attack: 3, durability: 100 },
+            longstaff: { name: "Cajado Longo", type: "weapon", slot: "duas-mãos", attack: 1, range: 1, diagonal: true, durability: 100 }
+        };
+        const spells = {
+            fogo: { name: "Fogo", damage: 3 },
+            ar: { name: "Ar", damage: 2 },
+            agua: { name: "Água", damage: 2 },
+            terra: { name: "Terra", damage: 2 },
+        };
+        const heroData = { 
+            barbarian: { name: "Bárbaro", attackDice: 3, defendDice: 2, vida: 8, inteligência: 2, agilidade: 2, maestria: 3, maestriaTipo: 'espadas', movementPoints: 0, color: 0xcc0000 },
+            mage: { name: "Mago", attackDice: 1, defendDice: 2, vida: 4, inteligência: 6, agilidade: 3, maestria: 1, maestriaTipo: 'magia', movementPoints: 0, color: 0x4f46e5, spellbook: ['fogo', 'ar', 'agua', 'terra'], mana: 6, maxMana: 6 },
+            elf: { name: "Elfo", attackDice: 2, defendDice: 2, vida: 6, inteligência: 4, agilidade: 4, maestria: 2, maestriaTipo: 'furtividade', movementPoints: 0, color: 0x10b981, spellbook: ['fogo', 'ar', 'agua', 'terra'], mana: 4, maxMana: 4 },
+            dwarf: { name: "Anão", attackDice: 2, defendDice: 3, vida: 7, inteligência: 3, agilidade: 1, maestria: 4, maestriaTipo: 'ferramentas', movementPoints: 0, color: 0xd97706 }
+        };
+        const monsterData = { 
+            goblin: { id: 'goblin', name: "Goblin", attackDice: 2, defendDice: 1, vida: 3, color: 0x16a34a },
+            orc: { id: 'orc', name: "Orc", attackDice: 3, defendDice: 2, vida: 4, color: 0x166534 },
+            zombie: { id: 'zombie', name: "Zumbi", attackDice: 2, defendDice: 3, vida: 2, color: 0x6ee7b7 },
+            skeleton: { id: 'skeleton', name: "Esqueleto", attackDice: 2, defendDice: 2, vida: 2, color: 0x6ee7b7 }
+        };
+
+        const missions = [
+            {
+                title: "A Prova",
+                map: [
+                    [0,0,0,0,0,0,0],
+                    [0,1,1,1,2,1,0],
+                    [0,1,1,1,0,1,0],
+                    [0,1,1,1,0,1,0],
+                    [0,0,0,0,0,0,0]
+                ],
+                rooms: {
+                    'start': { tiles: [[1,1],[1,2],[1,3],[2,1],[2,2],[2,3],[3,1],[3,2],[3,3]] },
+                    'end': { tiles: [[1,5],[2,5],[3,5]] },
+                },
+                monsterSpawns: [
+                    { type: 'goblin', x: 5, y: 1, minHeroes: 1 },
+                    { type: 'orc', x: 5, y: 2, minHeroes: 3 },
+                ],
+                playerStart: {x: 1, y: 2},
+                gridSize: {cols: 7, rows: 5},
+                trapCount: 2
+            }
+        ];
+        
+        // --- FUNÇÕES UTILITÁRIAS E DE RENDERIZAÇÃO ---
+        function logMessage(msg, className = 'bg-gray-800 text-white border-gray-500') {
+            const toastContainer = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.innerHTML = msg;
+            toast.className = `toast ${className}`;
+            toastContainer.appendChild(toast);
+            setTimeout(() => {
+                toast.remove();
+            }, 4000);
+        }
+
+        function createButton(text, onClick, extra = 'bg-blue-600 hover:bg-blue-700', disabled = false) {
+            const b = document.createElement('button');
+            b.textContent = text;
+            b.className = `w-full text-white font-bold py-2 px-4 rounded transition-colors ${extra}`;
+            b.onclick = onClick;
+            b.disabled = disabled;
+            return b;
+        }
+
+        function isTileWalkable(x, y, isMonster = false) {
+            const mission = missions[currentMissionIndex];
+            if (!mission || x < 0 || x >= mission.gridSize.cols || y < 0 || y >= mission.gridSize.rows) return false;
+            const currentPlayer = heroes[currentPlayerIndex];
+            const allHeroes = isMonster ? heroes : heroes.filter(h => h !== currentPlayer);
+            return mapLayout[y][x] === TILE_TYPE.FLOOR ? !monsters.some(m => m.x === x && m.y === y) && !allHeroes.some(h => h.x === x && h.y === y) : false;
+        }
+        
+        function getAdjacentMonsters(hero) {
+            const adj = [];
+            for (const [dy, dx] of [ [0, 1], [0, -1], [1, 0], [-1, 0] ]) {
+                const m = monsters.find(m => m.x === hero.x + dx && m.y === hero.y + dy);
+                if (m) adj.push(m);
+            }
+            return adj;
+        }
+        
+        function getLineOfSightMonsters(hero, includeDiagonal = false) {
+            const targets = [];
+            const weapon = hero.equipment['mão-direita'] || hero.equipment['mão-esquerda'];
+            const range = (hero.type === 'elf' || hero.type === 'mage') ? 10 : (weapon?.range || 0);
+
+            if (range === 0 && hero.type !== 'elf' && hero.type !== 'mage') return targets;
+
+            for (const monster of monsters) {
+                const dx = monster.x - hero.x;
+                const dy = monster.y - hero.y;
+                const distance = Math.sqrt(dx*dx + dy*dy);
+
+                if (dx === 0 && dy === 0) continue; 
+                
+                const isAdjacent = Math.abs(dx) <= 1 && Math.abs(dy) <= 1 && (Math.abs(dx) + Math.abs(dy) <= 1);
+                if (isAdjacent) continue;
+                
+                const isDiagonal = dx !== 0 && dy !== 0;
+                if (!includeDiagonal && isDiagonal && weapon?.diagonal !== true) continue;
+
+                if(hasLineOfSight(hero, monster) && distance <= range) {
+                    targets.push(monster);
+                }
+            }
+            return targets;
+        }
+
+        function hasLineOfSight(start, end) {
+            const dx = end.x - start.x;
+            const dy = end.y - start.y;
+            const steps = Math.max(Math.abs(dx), Math.abs(dy));
+
+            for (let i = 1; i < steps; i++) {
+                const checkX = Math.round(start.x + (dx / steps) * i);
+                const checkY = Math.round(start.y + (dy / steps) * i);
+                if (mapLayout[checkY]?.[checkX] === TILE_TYPE.WALL) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        function getAdjacentDoors(fromX, fromY) {
+            const doors = [];
+            for (const [dy, dx] of [ [0, 1], [0, -1], [1, 0], [-1, 0] ]) {
+                const mission = missions[currentMissionIndex];
+                const nX = fromX + dx, nY = fromY + dy;
+                if (nX >= 0 && nX < mission.gridSize.cols && nY >= 0 && nY < mission.gridSize.rows && mapLayout[nY]?.[nX] === TILE_TYPE.DOOR) {
+                    const doorMesh = mapMeshes.doors.find(d => d.userData.x === nX && d.userData.y === nY);
+                    if (doorMesh && doorMesh.visible) doors.push({ x: nX, y: nY });
+                }
+            }
+            return doors;
+        }
+        
+        function getAdjacentTraps(hero) {
+            const adj = [];
+            for (const [dy, dx] of [[0,1], [0,-1], [1,0], [-1,0]]) {
+                const t = traps.find(t => t.x === hero.x + dx && t.y === hero.y + dy && t.revealed);
+                if(t) adj.push(t);
+            }
+            return adj;
+        }
+
+        function getCurrentRoomId(px, py) {
+            const missionRooms = missions[currentMissionIndex].rooms;
+            for (const id in missionRooms) {
+                if (missionRooms[id].tiles.some(([ry, rx]) => rx === px && ry === py)) {
+                    return id;
+                }
+            }
+            return null;
+        }
+
+        function getMonstersInRoom(px, py) {
+            const rId=getCurrentRoomId(px,py);
+            return rId ? monsters.filter(m => missions[currentMissionIndex].rooms[rId].tiles.some(([ry,rx])=>rx===m.x&&ry===m.y)) : [];
+        }
+        
+        function rollCombatDice(count) {
+            let skulls = 0, whiteShields = 0, blackShields = 0;
+            for (let i = 0; i < count; i++) {
+                const roll = Math.floor(Math.random() * 6);
+                if (roll < 3) skulls++;
+                else if (roll < 5) whiteShields++;
+                else blackShields++;
+            }
+            return { skulls, whiteShields, blackShields };
+        }
+        
+        function gameOver(victory) {
+            playerTurn=false; 
+            actionButtonsDiv.innerHTML=''; 
+            if(victory){ 
+                const nextMissionIndex = currentMissionIndex + 1;
+                if(nextMissionIndex < missions.length){
+                    logMessage(`Missão Completa! A preparar a próxima missão em 3 segundos...`, 'bg-green-700 border-green-400 text-white');
+                    setTimeout(() => loadMission(nextMissionIndex), 3000);
+                } else {
+                    logMessage("CAMPANHA COMPLETA! Você é um verdadeiro herói!", "bg-green-700 border-green-400 text-white");
+                    actionButtonsDiv.appendChild(createButton('Jogar Novamente', () => location.reload(), 'bg-green-700 hover:bg-green-800'));
+                }
+            } else { 
+                actionButtonsDiv.appendChild(createButton('Tentar Novamente', () => loadMission(currentMissionIndex))); 
+                logMessage("DERROTA...", "bg-red-800 border-red-500 text-white");
+                const currentPlayer = heroes[currentPlayerIndex];
+                if(currentPlayer) currentPlayer.vida=0;
+            } 
+            renderPlayerStats();
+        }
+
+        function toggleModal(modalId, show) {
+            document.getElementById(modalId).style.display = show ? 'flex' : 'none';
+            if (show && modalId === 'actions-modal') {
+                renderActions(true);
+            }
+            if (show && modalId === 'armor-modal') {
+                renderEquipment();
+            }
+        }
+        
+        // --- LÓGICA PRINCIPAL DO JOGO ---
+        function selectHeroAndStart(heroType) {
+            const heroCard = document.querySelector(`.hero-card[data-type="${heroType}"]`);
+            const isSelected = heroCard.classList.toggle('selected');
+            
+            if(isSelected) {
+                if(heroes.length < 4) {
+                    const hero = { 
+                        type: heroType, 
+                        ...heroData[heroType],
+                        equipment: { "cabeça": null, "rosto": null, "pescoço": null, "braço": null, "mão-direita": null, "mão-esquerda": null },
+                        inventory: [],
+                        spellsUsed: []
+                    };
+                    if(heroType === 'barbarian') hero.equipment['mão-direita'] = items.broadsword;
+                    if(heroType === 'elf') hero.equipment['mão-esquerda'] = items.shortsword;
+                    if(heroType === 'dwarf') hero.equipment['mão-direita'] = items.axe;
+                    if(heroType === 'mage') hero.equipment['mão-direita'] = items.longstaff;
+
+                    heroes.push(hero);
+                } else {
+                    heroCard.classList.remove('selected');
+                    logMessage("O grupo já está cheio (máx. 4 heróis).", 'bg-yellow-800 border-yellow-400 text-white');
+                }
+            } else {
+                heroes = heroes.filter(h => h.type !== heroType);
+            }
+            startGameBtn.disabled = heroes.length === 0;
+        }
+        
+        function init() { init3D(); showCharacterSelection(); animate(); }
+
+        function init3D() {
+            const width = canvasContainer.clientWidth, height = canvasContainer.clientHeight;
+            scene = new THREE.Scene(); scene.background = new THREE.Color(0x0a0a0a);
+            camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 1000);
+            cameraPivot = new THREE.Object3D();
+            cameraPivot.add(camera);
+            scene.add(cameraPivot);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(width, height); renderer.shadowMap.enabled = true;
+            canvasContainer.appendChild(renderer.domElement);
+            const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
+            scene.add(ambientLight);
+            raycaster = new THREE.Raycaster(); mouse = new THREE.Vector2();
+            window.addEventListener('resize', onWindowResize);
+            renderer.domElement.addEventListener('click', onCanvasClick);
+        }
+        
+        function showCharacterSelection() {
+            document.getElementById('start-screen').style.display = 'none';
+            characterSelectionScreen.style.display = 'flex';
+            
+            heroSelectionGrid.innerHTML = '';
+            for(const type in heroData) {
+                const hero = heroData[type];
+                const card = document.createElement('div');
+                card.className = 'hero-card cursor-pointer border-4 border-gray-600 rounded-lg p-4 bg-gray-700 hover:border-amber-400';
+                card.dataset.type = type;
+                card.onclick = () => selectHeroAndStart(type);
+                card.innerHTML = `<h3 class="text-2xl font-bold text-amber-300">${hero.name}</h3>
+                                  <p>Vida: ${hero.vida}</p>
+                                  <p>Inteligência: ${hero.inteligência}</p>`;
+                heroSelectionGrid.appendChild(card);
+            }
+        }
+
+        function startGame() {
+            characterSelectionScreen.style.display = 'none';
+            loadMission(0);
+        }
+
+        function loadMission(missionIndex) {
+            currentMissionIndex = missionIndex;
+            const mission = missions[currentMissionIndex];
+            if (!mission) {
+                logMessage("CAMPANHA COMPLETA! Você é um verdadeiro herói!", "bg-green-700 border-green-400 text-white");
+                actionButtonsDiv.innerHTML = `<button onclick="location.reload()" class="w-full text-white font-bold py-2 px-4 rounded bg-green-700">Jogar Novamente</button>`;
+                return;
+            }
+            
+            heroes.forEach((hero, index) => {
+                const startPos = mission.playerStart;
+                hero.x = startPos.x + index; 
+                hero.y = startPos.y;
+                hero.maxBody = heroData[hero.type].vida; 
+                hero.vida = hero.maxBody; 
+                hero.movementPoints = 0;
+                hero.spellsUsed = [];
+            });
+            currentPlayerIndex = 0;
+            
+            monsters = []; traps = [];
+            
+            for(let i = scene.children.length - 1; i >= 0; i--) {
+                const obj = scene.children[i];
+                if(obj !== camera && obj !== cameraPivot && !(obj.type === 'AmbientLight')) {
+                    scene.remove(obj);
+                }
+            }
+            if(!scene.children.find(c => c === cameraPivot)) {
+                 scene.add(cameraPivot);
+            }
+            if(!scene.children.find(c => c.isAmbientLight)) {
+                 const ambientLight = new THREE.AmbientLight(0x404040, 0.5); scene.add(ambientLight);
+            }
+            
+            mapMeshes = { floors: [], walls: [], doors: [], traps: [] }; monsterMeshes = []; heroMeshes = [];
+            logMessage(`Iniciando Missão: ${mission.title}`, "bg-amber-800 border-amber-400 text-white");
+            mapLayout = mission.map;
+            create3DMap(); 
+            heroes.forEach(create3DHero);
+            Object.values(mission.rooms).forEach(room => {
+                room.isRevealed = false;
+                room.hasBeenSearched = false;
+            });
+            placeRandomTraps(mission.trapCount);
+            
+            const firstPlayer = heroes[0];
+            if (firstPlayer) {
+               revealRoomAt(firstPlayer.x, firstPlayer.y);
+            }
+            newTurn();
+        }
+
+        function newTurn() {
+            playerTurn = true; hasRolledForMove = false; hasActed = false; 
+            const currentPlayer = heroes[currentPlayerIndex];
+            if(!currentPlayer || currentPlayer.vida <= 0) {
+                handleEndTurn();
+                return;
+            }
+            currentPlayer.movementPoints = 0;
+            logMessage(`--- Turno de ${currentPlayer.name} ---`, "bg-gray-700 border-gray-400 text-white");
+            renderUI(); highlightMovableTiles(true);
+        }
+
+        function renderUI() {
+            if(!heroes[currentPlayerIndex]) return;
+            renderPlayerStats(); 
+            renderActions(); 
+            updateMovementPointsDisplay(); 
+            renderMiniMap();
+        }
+        
+        function handleMove(x, y) {
+            if (!playerTurn) return;
+            const currentPlayer = heroes[currentPlayerIndex];
+            const cost = reachableTiles.get(`${x},${y}`);
+            if (cost === undefined || cost > currentPlayer.movementPoints) return;
+
+            currentPlayer.x = x;
+            currentPlayer.y = y;
+            currentPlayer.movementPoints -= cost;
+            heroMeshes[currentPlayerIndex].position.set(x * TILE_SIZE, 0.5, y * TILE_SIZE);
+
+            const trapIndex = traps.findIndex(t => t.x === x && t.y === y && !t.revealed);
+            if (trapIndex !== -1) {
+                const dodgeRoll = Math.floor(Math.random() * 6) + 1;
+                if(dodgeRoll > currentPlayer.agilidade) {
+                    logMessage(`Armadilha! Você desviou-se (rolou ${dodgeRoll} > ${currentPlayer.agilidade} de Agilidade).`, "bg-cyan-800 border-cyan-400 text-white");
+                } else {
+                    logMessage("Armadilha! Você sofreu 1 de dano.", "bg-red-900 border-red-500 text-white");
+                    currentPlayer.vida--;
+                }
+                traps[trapIndex].revealed = true; 
+                const trapMesh = mapMeshes.traps.find(m => m.userData.x === x && m.userData.y === y);
+                if (trapMesh) trapMesh.visible = true; 
+                if(currentPlayer.vida <= 0) gameOver(false);
+            }
+            
+            findAllReachableTiles();
+            highlightMovableTiles();
+            renderUI();
+            checkAndEndTurn();
+        }
+
+        function handleRollForMovement() {
+            if (!playerTurn || hasRolledForMove) return;
+            const currentPlayer = heroes[currentPlayerIndex];
+            const roll = Math.floor(Math.random() * 6) + 1;
+            currentPlayer.movementPoints = roll;
+            hasRolledForMove = true;
+            logMessage(`Você rolou um ${roll} para movimento!`, "bg-green-800 border-green-400 text-white");
+            findAllReachableTiles();
+            highlightMovableTiles();
+            renderUI();
+        }
+        
+        function handleAttack(monsterId, isMagic = false, magicBonus = 0) {
+            if (!playerTurn || hasActed) return; 
+            hasActed = true;
+            toggleModal('actions-modal', false);
+            const currentPlayer = heroes[currentPlayerIndex];
+            const monsterIndex = monsters.findIndex(m => m.uid === monsterId);
+            if (monsterIndex === -1) { checkAndEndTurn(); return; }
+            const monster = monsters[monsterIndex];
+            
+            let playerAttack;
+            if(isMagic) {
+                const spellDamage = currentPlayer.spellsUsed.reduce((acc, spellKey) => {
+                    const spell = spells[spellKey];
+                    if(spell.name === "Fogo e Ar" || spell.name === "Água e Ar" || spell.name === "Fogo e Terra") return acc + 2;
+                    return acc + spell.damage;
+                }, 0);
+                 playerAttack = rollCombatDice(spellDamage + magicBonus);
+            } else {
+                playerAttack = rollCombatDice(currentPlayer.attackDice);
+            }
+
+            const monsterDefense = isMagic ? {blackShields: 0} : rollCombatDice(monster.defendDice, false);
+            
+            const damage = Math.max(0, playerAttack.skulls - monsterDefense.blackShields);
+            if (damage > 0) {
+                monster.vida -= damage;
+                logMessage(`${currentPlayer.name} ${isMagic ? 'lança magia em' : 'ataca'} ${monster.name} e causa ${damage} de dano!`, 'bg-yellow-800 border-yellow-500 text-white');
+            } else {
+                logMessage(`${monster.name} defende o ataque de ${currentPlayer.name}!`, 'bg-gray-700 border-gray-400 text-white');
+            }
+
+            if(isMagic && ['goblin', 'skeleton', 'orc'].includes(monster.id)) {
+                monster.isStunned = true;
+                logMessage(`${monster.name} está atordoado!`, 'bg-blue-800 border-blue-400 text-white');
+            }
+
+            if (monster.vida <= 0) {
+                logMessage(`${monster.name} foi derrotado!`, 'bg-green-800 border-green-500 text-white');
+                const meshIndex = monsterMeshes.findIndex(m => m.userData.uid === monsterId);
+                if (meshIndex !== -1) { scene.remove(monsterMeshes[meshIndex]); monsterMeshes.splice(meshIndex, 1); }
+                monsters.splice(monsterIndex, 1);
+                if(monsters.length === 0) gameOver(true);
+            }
+            renderUI();
+            checkAndEndTurn();
+        }
+        
+        function handleSearch(type) {
+            if (!playerTurn || hasActed) return; hasActed = true;
+            toggleModal('actions-modal', false);
+            const currentPlayer = heroes[currentPlayerIndex];
+            const currentRoomId = getCurrentRoomId(currentPlayer.x, currentPlayer.y);
+            
+            if (currentRoomId) { missions[currentMissionIndex].rooms[currentRoomId].hasBeenSearched = true; }
+            
+            if(type === 'treasure') {
+                if (getMonstersInRoom(currentPlayer.x, currentPlayer.y).length > 0) {
+                     logMessage("Não pode procurar tesouros com monstros na sala!", "bg-red-800 border-red-500 text-white");
+                } else {
+                     const roll = Math.random();
+                     if (roll < 0.1) { logMessage("É uma armadilha! Perde 1 de Vida.", "bg-red-800 border-red-500 text-white"); currentPlayer.vida--; if(currentPlayer.vida <= 0) gameOver(false); }
+                     else if (roll < 0.6) { const gold = Math.floor(Math.random() * 20) + 10; logMessage(`Você encontrou ${gold} moedas de ouro!`, "bg-yellow-700 border-yellow-400 text-white"); }
+                     else { logMessage("Não encontrou nada.", "bg-gray-700 border-gray-400 text-white"); }
+                }
+            } else if (type === 'trap') {
+                const roll = Math.floor(Math.random() * 6) + 1;
+                if (roll > currentPlayer.inteligência) {
+                    const checkCount = Math.floor(Math.random() * 6) + 1;
+                    let resultText = `Sucesso! (${roll} > ${currentPlayer.inteligência}). Você pode verificar ${checkCount} quadrados.`;
+                    const roomTraps = traps.filter(t => !t.revealed && getCurrentRoomId(t.x, t.y) === currentRoomId);
+                    let revealedCount = 0;
+                    for(let i = 0; i < Math.min(checkCount, roomTraps.length); i++){
+                        const trap = roomTraps[i];
+                        trap.revealed = true;
+                        const trapMesh = mapMeshes.traps.find(m => m.userData.x === trap.x && m.userData.y === trap.y);
+                        if(trapMesh) trapMesh.visible = true;
+                        revealedCount++;
+                    }
+                     if(revealedCount > 0) { resultText += ` Você encontrou ${revealedCount} armadilha(s)!`; }
+                     else { resultText += " Nenhuma armadilha encontrada.";}
+                     logMessage(resultText, "bg-cyan-800 border-cyan-400 text-white");
+                } else {
+                    logMessage(`Falhou! (${roll} <= ${currentPlayer.inteligência}).`, "bg-red-800 border-red-500 text-white");
+                }
+            }
+            renderUI();
+            checkAndEndTurn();
+        }
+
+        function handleOpenDoor(door) {
+            if (!playerTurn) return;
+            logMessage(`Você abre a porta em (${door.x}, ${door.y}).`, 'bg-orange-800 border-orange-400 text-white');
+            const doorMesh = mapMeshes.doors.find(m => m.userData.x === door.x && m.userData.y === door.y);
+            if (doorMesh) {
+                doorMesh.visible = false;
+            }
+            mapLayout[door.y][door.x] = TILE_TYPE.FLOOR;
+            revealRoomAt(door.x, door.y, true);
+            findAllReachableTiles();
+            highlightMovableTiles();
+            renderUI();
+        }
+        
+        function handleDisarmTrap(trap) {
+             if (!playerTurn || hasActed) return; hasActed = true;
+             toggleModal('actions-modal', false);
+             const currentPlayer = heroes[currentPlayerIndex];
+             const roll = Math.floor(Math.random() * 6) + 1;
+             
+             const success = (currentPlayer.maestriaTipo === 'ferramentas') || (roll > currentPlayer.maestria);
+
+             if(success) {
+                logMessage("Sucesso! Armadilha desarmada.", "bg-green-700 border-green-400 text-white");
+                const trapIndex = traps.findIndex(t => t.x === trap.x && t.y === trap.y);
+                if (trapIndex !== -1) traps.splice(trapIndex, 1);
+                const trapMesh = mapMeshes.traps.find(m => m.userData.x === trap.x && m.userData.y === trap.y);
+                if(trapMesh) scene.remove(trapMesh);
+             } else {
+                logMessage("Falhou! A armadilha dispara!", "bg-red-900 border-red-500 text-white");
+                currentPlayer.vida--;
+                const trapIndex = traps.findIndex(t => t.x === trap.x && t.y === trap.y);
+                if (trapIndex !== -1) traps.splice(trapIndex, 1);
+                const trapMesh = mapMeshes.traps.find(m => m.userData.x === trap.x && m.userData.y === trap.y);
+                if(trapMesh) scene.remove(trapMesh);
+                if(currentPlayer.vida <= 0) gameOver(false);
+             }
+             renderUI();
+             checkAndEndTurn();
+        }
+        
+        function checkAndEndTurn() {
+            const currentPlayer = heroes[currentPlayerIndex];
+            if(playerTurn && hasRolledForMove && (currentPlayer.movementPoints <= 0 || hasActed)) {
+                setTimeout(() => handleEndTurn(), 500);
+            }
+        }
+
+        function handleEndTurn() {
+            if (playerTurn) {
+                currentPlayerIndex = (currentPlayerIndex + 1) % heroes.length;
+                if (currentPlayerIndex === 0) { // All heroes have played
+                    playerTurn = false;
+                    logMessage("--- Fim da Rodada dos Heróis ---", "bg-gray-700 border-gray-400 text-white");
+                    renderUI();
+                    setTimeout(monsterPhase, 1000);
+                } else {
+                    newTurn(); // Next hero's turn
+                }
+            }
+        }
+
+        function monsterPhase() {
+            logMessage("--- Turno dos Monstros ---", 'bg-red-900 border-red-500 text-white');
+            if (monsters.length === 0) {
+                setTimeout(() => {
+                    currentPlayerIndex = 0;
+                    if (heroes.some(h => h.vida > 0)) newTurn();
+                }, 500);
+                return;
+            }
+            monsters.forEach((monster, index) => {
+                setTimeout(() => {
+                    if (heroes.every(h => h.vida <= 0)) return; // No heroes left
+                    if(monster.isStunned){
+                        logMessage(`${monster.name} está atordoado e perde o turno.`, 'bg-blue-800 border-blue-400 text-white');
+                        monster.isStunned = false;
+                        return;
+                    }
+                    const monsterMesh = monsterMeshes.find(m => m.userData.uid === monster.uid);
+                    if (!monsterMesh) return;
+                    
+                    // Simple AI: find closest hero
+                    let closestHero = null;
+                    let minDistance = Infinity;
+                    heroes.filter(h => h.vida > 0).forEach(hero => {
+                        const distance = Math.abs(monster.x - hero.x) + Math.abs(monster.y - hero.y);
+                        if(distance < minDistance){
+                            minDistance = distance;
+                            closestHero = hero;
+                        }
+                    });
+
+                    if(!closestHero) return;
+
+                    if (minDistance === 1) {
+                        const monsterAttack = rollCombatDice(monster.attackDice);
+                        const playerDefense = rollCombatDice(closestHero.defendDice, true);
+                        logMessage(`Ataque do ${monster.name} em ${closestHero.name}: ${monsterAttack.skulls} 💀. Defesa: ${playerDefense.whiteShields} 🛡️.`, 'bg-red-900 border-red-500 text-white');
+                        const damage = Math.max(0, monsterAttack.skulls - playerDefense.whiteShields);
+                        if (damage > 0) {
+                            closestHero.vida -= damage;
+                            logMessage(`${closestHero.name} sofre ${damage} de dano!`, 'bg-red-900 border-red-500 text-white');
+                            if (closestHero.vida <= 0) {
+                                logMessage(`${closestHero.name} foi derrotado!`, 'bg-red-900 border-red-500 text-white');
+                                const heroMesh = heroMeshes.find(hm => hm.userData.type === closestHero.type);
+                                if(heroMesh) heroMesh.visible = false;
+                                if(heroes.every(h => h.vida <= 0)) gameOver(false);
+                            }
+                        } else {
+                            logMessage(`${closestHero.name} defendeu o ataque!`, 'bg-gray-700 border-gray-400 text-white');
+                        }
+                    } else {
+                        const adjacentDoors = getAdjacentDoors(monster.x, monster.y);
+                        if (adjacentDoors.length > 0) {
+                            const door = adjacentDoors[0];
+                            logMessage(`O ${monster.name} abre a porta em (${door.x}, ${door.y})!`, 'bg-orange-800 border-orange-400 text-white');
+                            const doorMesh = mapMeshes.doors.find(m => m.userData.x === door.x && m.userData.y === door.y);
+                            if (doorMesh) doorMesh.visible = false;
+                            mapLayout[door.y][door.x] = TILE_TYPE.FLOOR;
+                            revealRoomAt(door.x, door.y, true);
+                        } else {
+                            let dx = Math.sign(closestHero.x - monster.x);
+                            let dy = Math.sign(closestHero.y - monster.y);
+                            let newX = monster.x + dx;
+                            let newY = monster.y;
+                            if (dx !== 0 && isTileWalkable(newX, newY, true)) {
+                                monster.x = newX;
+                            } else if (dy !== 0) {
+                                newX = monster.x;
+                                newY = monster.y + dy;
+                                if (isTileWalkable(newX, newY, true)) monster.y = newY;
+                            }
+                            monsterMesh.position.set(monster.x * TILE_SIZE, 0.4, monster.y * TILE_SIZE);
+                        }
+                    }
+                    renderPlayerStats();
+                }, index * 800);
+            });
+            setTimeout(() => {
+                currentPlayerIndex = 0;
+                if (heroes.some(h => h.vida > 0)) newTurn();
+            }, monsters.length * 800 + 500);
+        }
+        
+        function create3DMap() {
+            const mission = missions[currentMissionIndex];
+            const {cols, rows} = mission.gridSize;
+
+            cameraPivot.position.set((cols - 1) / 2 * TILE_SIZE, 0, (rows - 1) / 2 * TILE_SIZE);
+            camera.position.set(0, 12, rows * 1.4); // Aproxima a câmara
+            camera.lookAt(cameraPivot.position);
+
+            const floorGeo = new THREE.PlaneGeometry(TILE_SIZE, TILE_SIZE);
+            const wallGeo = new THREE.BoxGeometry(TILE_SIZE, 1.5, TILE_SIZE); // Paredes mais altas
+            const doorGeo = new THREE.BoxGeometry(TILE_SIZE, 1.2, TILE_SIZE * 0.2);
+            const doorGeoH = new THREE.BoxGeometry(TILE_SIZE * 0.2, 1.2, TILE_SIZE);
+            const floorMat = new THREE.MeshLambertMaterial({ color: 0x8b7e6a });
+            const wallMat = new THREE.MeshLambertMaterial({ color: 0x6b5a4a });
+            const doorMat = new THREE.MeshLambertMaterial({ color: 0x8b4513 });
+            
+            scene.add( new THREE.GridHelper(Math.max(cols, rows), Math.max(cols, rows), 0x555555, 0x555555).translateY(-0.01) );
+
+            for (let y = 0; y < rows; y++) {
+                for (let x = 0; x < cols; x++) {
+                    let mesh;
+                    const tileType = mapLayout[y]?.[x];
+                    switch (tileType) {
+                        case TILE_TYPE.FLOOR:
+                            mesh = new THREE.Mesh(floorGeo, floorMat.clone()); mesh.rotation.x = -Math.PI / 2;
+                            mesh.position.set(x * TILE_SIZE, 0, y * TILE_SIZE); mesh.userData = { x, y, type: 'floor' };
+                            mapMeshes.floors.push(mesh); break;
+                        case TILE_TYPE.WALL:
+                            mesh = new THREE.Mesh(wallGeo, wallMat.clone()); mesh.position.set(x * TILE_SIZE, 0.75, y * TILE_SIZE);
+                            mapMeshes.walls.push(mesh); break;
+                        case TILE_TYPE.DOOR:
+                            const floorUnderDoor = new THREE.Mesh(floorGeo, floorMat.clone());
+                            floorUnderDoor.rotation.x = -Math.PI / 2; floorUnderDoor.position.set(x * TILE_SIZE, 0, y * TILE_SIZE);
+                            floorUnderDoor.userData = { x, y, type: 'floor' }; mapMeshes.floors.push(floorUnderDoor);
+                            scene.add(floorUnderDoor);
+
+                            const isVertical = (mapLayout[y-1]?.[x] === TILE_TYPE.FLOOR || mapLayout[y+1]?.[x] === TILE_TYPE.FLOOR) && (!mapLayout[y][x-1] || mapLayout[y][x-1] === TILE_TYPE.WALL) && (!mapLayout[y][x+1] || mapLayout[y][x+1] === TILE_TYPE.WALL);
+                            mesh = new THREE.Mesh(isVertical ? doorGeo : doorGeoH, doorMat.clone()); 
+                            mesh.position.set(x * TILE_SIZE, 0.6, y * TILE_SIZE);
+                            mesh.userData = { x, y, type: 'door' };
+                            mapMeshes.doors.push(mesh); break;
+                    }
+                    if (mesh) { mesh.castShadow = true; mesh.receiveShadow = true; scene.add(mesh); }
+                }
+            }
+        }
+
+        function create3DHero(hero, index) {
+            const geo = new THREE.BoxGeometry(0.6, 1, 0.6);
+            const mat = new THREE.MeshLambertMaterial({
+                color: hero.color
+            });
+            const heroMesh = new THREE.Mesh(geo, mat);
+            heroMesh.position.set(hero.x * TILE_SIZE, 0.5, hero.y * TILE_SIZE);
+            heroMesh.castShadow = false;
+            heroMesh.userData = {
+                type: hero.type,
+                id: index
+            };
+            heroMeshes.push(heroMesh);
+            scene.add(heroMesh);
+            const playerLight = new THREE.PointLight(0xffffff, 0.8, 8);
+            playerLight.castShadow = true;
+            heroMesh.add(playerLight);
+        }
+
+        function revealRoomAt(px, py, throughDoor = false) {
+             let targetRoomId = null;
+             const missionRooms = missions[currentMissionIndex].rooms;
+             const checkTileForRoom = (x, y) => Object.keys(missionRooms).find(id => missionRooms[id].tiles.some(([ry, rx]) => rx === x && ry === y));
+             if (throughDoor) {
+                for (const [dy, dx] of [
+                        [0, 1],
+                        [0, -1],
+                        [1, 0],
+                        [-1, 0]
+                    ]) {
+                    const foundRoom = checkTileForRoom(px + dx, py + dy);
+                    if (foundRoom && !missionRooms[foundRoom].isRevealed) {
+                        targetRoomId = foundRoom;
+                        break;
+                    }
+                }
+             } else {
+                targetRoomId = checkTileForRoom(px, py);
+             }
+             if (targetRoomId && !missionRooms[targetRoomId].isRevealed) {
+                 logMessage("Uma nova área é revelada!", 'bg-yellow-800 border-yellow-400 text-white');
+                 missionRooms[targetRoomId].isRevealed = true;
+                 const roomTiles = missionRooms[targetRoomId].tiles;
+                 const centerX = roomTiles.reduce((acc, [y, x]) => acc + x, 0) / roomTiles.length;
+                 const centerY = roomTiles.reduce((acc, [y, x]) => acc + y, 0) / roomTiles.length;
+                 const roomLight = new THREE.PointLight(0xffdcb4, 0.8, 15);
+                 roomLight.position.set(centerX * TILE_SIZE, 2, centerY * TILE_SIZE);
+                 scene.add(roomLight);
+                 
+                 const missionSpawns = missions[currentMissionIndex].monsterSpawns;
+                 if (missionSpawns) {
+                     missionSpawns.filter(spawn => getCurrentRoomId(spawn.x, spawn.y) === targetRoomId && heroes.length >= spawn.minHeroes)
+                     .forEach(m => {
+                         const newMonster = { ...monsterData[m.type],
+                            vida: monsterData[m.type].vida,
+                            x: m.x,
+                            y: m.y,
+                            uid: monsters.length + Date.now()
+                         };
+                         monsters.push(newMonster); 
+                         const monsterGeo = m.type === 'zombie' ? new THREE.BoxGeometry(0.7, 1.1, 0.7) : new THREE.CylinderGeometry(0.3, 0.3, 0.8, 8);
+                         const monsterMat = new THREE.MeshLambertMaterial({
+                             color: monsterData[m.type].color
+                         });
+                         const monsterMesh = new THREE.Mesh(monsterGeo, monsterMat);
+                         monsterMesh.position.set(m.x * TILE_SIZE, 0.4, m.y * TILE_SIZE);
+                         monsterMesh.castShadow = false;
+                         monsterMesh.userData.uid = newMonster.uid;
+                         monsterMeshes.push(monsterMesh);
+                         scene.add(monsterMesh);
+                         logMessage(`Um ${newMonster.name} aparece!`, 'bg-red-900 border-red-500 text-white');
+                     });
+                 }
+             }
+        }
+        
+        function placeRandomTraps(count) {
+            const mission = missions[currentMissionIndex];
+            const floorTiles = [];
+            Object.values(mission.rooms).forEach(room => {
+                room.tiles.forEach(([y, x]) => {
+                    if (mapLayout[y]?.[x] === TILE_TYPE.FLOOR) floorTiles.push({
+                        x,
+                        y
+                    });
+                });
+            });
+            for (let i = 0; i < count; i++) {
+                if (floorTiles.length === 0) break;
+                const randomIndex = Math.floor(Math.random() * floorTiles.length);
+                const tile = floorTiles.splice(randomIndex, 1)[0];
+                const trap = {
+                    x: tile.x,
+                    y: tile.y,
+                    revealed: false
+                };
+                traps.push(trap);
+                const geo = new THREE.CircleGeometry(0.3, 16);
+                const mat = new THREE.MeshBasicMaterial({
+                    color: 0xff0000,
+                    transparent: true,
+                    opacity: 0.8
+                });
+                const mesh = new THREE.Mesh(geo, mat);
+                mesh.rotation.x = -Math.PI / 2;
+                mesh.position.set(tile.x, 0.01, tile.y);
+                mesh.visible = false;
+                mesh.userData = {
+                    x: tile.x,
+                    y: tile.y
+                };
+                mapMeshes.traps.push(mesh);
+                scene.add(mesh);
+            }
+        }
+        
+        function findAllReachableTiles() {
+            const currentPlayer = heroes[currentPlayerIndex];
+            reachableTiles.clear();
+            const queue = [{
+                x: currentPlayer.x,
+                y: currentPlayer.y,
+                cost: 0
+            }];
+            const visited = new Set([`${currentPlayer.x},${currentPlayer.y}`]);
+            while (queue.length > 0) {
+                const {
+                    x,
+                    y,
+                    cost
+                } = queue.shift();
+                reachableTiles.set(`${x},${y}`, cost);
+                if (cost >= currentPlayer.movementPoints) continue;
+                for (const [dy, dx] of [
+                        [0, 1],
+                        [0, -1],
+                        [1, 0],
+                        [-1, 0]
+                    ]) {
+                    const newX = x + dx;
+                    const newY = y + dy;
+                    const key = `${newX},${newY}`;
+                    if (isTileWalkable(newX, newY) && !visited.has(key)) {
+                        visited.add(key);
+                        queue.push({
+                            x: newX,
+                            y: newY,
+                            cost: cost + 1
+                        });
+                    }
+                }
+            }
+        }
+
+        function highlightMovableTiles(clear = false) {
+            highlightedTiles.forEach(tile => {
+                tile.material.color.set(0x8b7e6a);
+            });
+            highlightedTiles = [];
+            const currentPlayer = heroes[currentPlayerIndex];
+            if (clear || !playerTurn || currentPlayer.movementPoints <= 0) return;
+            reachableTiles.forEach((cost, key) => {
+                if (cost > 0 && cost <= currentPlayer.movementPoints) {
+                    const [x, y] = key.split(',').map(Number);
+                    const tile = mapMeshes.floors.find(m => m.userData.x === x && m.userData.y === y);
+                    if (tile) {
+                        tile.material.color.set(0x4ade80);
+                        highlightedTiles.push(tile);
+                    }
+                }
+            });
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            if(cameraPivot) {
+                 cameraPivot.rotation.y = THREE.MathUtils.lerp(cameraPivot.rotation.y, targetRotationY, 0.1);
+            }
+            renderer.render(scene, camera);
+        }
+
+        function onWindowResize() {
+            camera.aspect = canvasContainer.clientWidth / canvasContainer.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(canvasContainer.clientWidth, canvasContainer.clientHeight);
+        }
+
+        function onCanvasClick(event) {
+            const rect = renderer.domElement.getBoundingClientRect();
+            mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+            mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(mapMeshes.floors);
+            if (intersects.length > 0) {
+                const {
+                    x,
+                    y
+                } = intersects[0].object.userData;
+                handleMove(x, y);
+            }
+        }
+        
+        function updateMovementPointsDisplay() {
+            const currentPlayer = heroes[currentPlayerIndex];
+            movementPointsDiv.textContent = hasRolledForMove ? `Pontos de Movimento: ${currentPlayer.movementPoints}` : '';
+        }
+        
+        function renderPlayerStats() {
+            const currentPlayer = heroes[currentPlayerIndex];
+            if (!currentPlayer) return;
+            heroNameTitle.textContent = `Turno de: ${currentPlayer.name}`;
+            playerStatsDiv.innerHTML = `
+                <div><span class="text-gray-400">Vida:</span> <span class="font-bold">${currentPlayer.vida}/${heroData[currentPlayer.type].vida}</span></div>
+                <div><span class="text-gray-400">Inteligência:</span> <span class="font-bold">${currentPlayer.inteligência}</span></div>
+                <div><span class="text-gray-400">Ataque:</span> <span class="font-bold">${currentPlayer.attackDice}🎲</span></div>
+                <div><span class="text-gray-400">Defesa:</span> <span class="font-bold">${currentPlayer.defendDice}🎲</span></div>
+                <div><span class="text-gray-400">Agilidade:</span> <span class="font-bold">${currentPlayer.agilidade}</span></div>
+                <div><span class="text-gray-400">Maestria:</span> <span class="font-bold">${currentPlayer.maestria} (${currentPlayer.maestriaTipo})</span></div>
+                 ${(currentPlayer.type === 'elf' || currentPlayer.type === 'mage') ? `<div><span class="text-gray-400">Mana:</span> <span class="font-bold">${currentPlayer.mana}/${heroData[currentPlayer.type].maxMana}</span></div>` : ''}
+            `;
+        }
+        
+        function renderEquipment() {
+            const currentPlayer = heroes[currentPlayerIndex];
+            for(const slot in currentPlayer.equipment) {
+                const element = document.getElementById(`slot-${slot.replace(' ', '-')}`);
+                if(element) {
+                    const item = currentPlayer.equipment[slot];
+                    element.textContent = item ? item.name : 'Vazio';
+                }
+            }
+        }
+
+        function renderMiniMap() {
+            const mission = missions[currentMissionIndex];
+            const missionRooms = mission.rooms;
+            const {cols, rows} = mission.gridSize;
+            const currentPlayer = heroes[currentPlayerIndex];
+            
+            const revealedRooms = Object.values(missionRooms).filter(r => r.isRevealed).length;
+            const totalRooms = Object.keys(missionRooms).length;
+            miniMapTitle.textContent = `Salas: ${revealedRooms} / ${totalRooms}`;
+
+            miniMapContainer.innerHTML = '';
+            miniMapContainer.style.gridTemplateColumns = `repeat(${cols}, 8px)`;
+
+            const playerRoomId = getCurrentRoomId(currentPlayer.x, currentPlayer.y);
+            
+            for(let y = 0; y < rows; y++){
+                for(let x = 0; x < cols; x++){
+                    const tile = document.createElement('div');
+                    tile.className = 'mini-tile';
+                    const tileType = mission.map[y]?.[x];
+                    
+                    if(tileType === TILE_TYPE.WALL) {
+                        tile.style.backgroundColor = '#4a3f35';
+                    } else if(tileType !== undefined) {
+                        const roomId = Object.keys(missionRooms).find(id => missionRooms[id].tiles.some(([ry, rx]) => rx === x && ry === y));
+                        if (roomId && missionRooms[roomId].isRevealed) {
+                            tile.style.backgroundColor = roomId === playerRoomId ? heroData[currentPlayer.type].color : '#a0aec0';
+                        } else {
+                             tile.style.backgroundColor = '#2d3748';
+                        }
+                    } else {
+                        tile.style.backgroundColor = 'transparent';
+                    }
+                    miniMapContainer.appendChild(tile);
+                }
+            }
+        }
+        
+        function renderActions(isSubActionRender = false) {
+            const targetDiv = isSubActionRender ? subActionButtonsDiv : actionButtonsDiv;
+            targetDiv.innerHTML = '';
+            const currentPlayer = heroes[currentPlayerIndex];
+            
+            if (!isSubActionRender) { // Botões do painel principal
+                if (!playerTurn) { targetDiv.innerHTML = `<p class="text-red-400">Turno dos Monstros...</p>`; return; }
+                if (!hasRolledForMove) {
+                    targetDiv.appendChild(createButton('🎲 Rolar para Movimento', handleRollForMovement, 'bg-green-600 hover:bg-green-700'));
+                    return;
+                }
+                targetDiv.appendChild(createButton('Ações', () => toggleModal('actions-modal', true), 'bg-blue-600 hover:bg-blue-700'));
+                targetDiv.appendChild(createButton('Mochila', () => toggleModal('backpack-modal', true), 'bg-purple-600 hover:bg-purple-700'));
+                targetDiv.appendChild(createButton('Armadura', () => toggleModal('armor-modal', true), 'bg-gray-600 hover:bg-gray-700'));
+                const adjDoors = getAdjacentDoors(currentPlayer.x, currentPlayer.y);
+                if(adjDoors.length > 0){
+                    adjDoors.forEach(d => targetDiv.appendChild(createButton(`🚪 Abrir Porta`, () => handleOpenDoor(d), 'bg-orange-600 hover:bg-orange-700')));
+                }
+                const cameraControls = document.getElementById('camera-controls');
+                if (cameraControls) {
+                    cameraControls.innerHTML = `<button onclick="targetRotationY -= Math.PI / 4" class="w-full bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded">Girar Esquerda</button>
+                                                <button onclick="targetRotationY += Math.PI / 4" class="w-full bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded">Girar Direita</button>`;
+                }
+                targetDiv.appendChild(createButton('Terminar Turno', handleEndTurn, 'bg-gray-500 hover:bg-gray-600'));
+            } else { // Botões do modal de ações
+                const mainActionDisabled = hasActed;
+                const adjMonsters = getAdjacentMonsters(currentPlayer);
+                if (adjMonsters.length > 0) {
+                     targetDiv.appendChild(createButton(`Atacar Monstro`, () => handleAttack(adjMonsters[0].uid), 'bg-red-700 hover:bg-red-800', mainActionDisabled));
+                }
+                
+                const rangedTargets = getLineOfSightMonsters(currentPlayer, true);
+                if ((currentPlayer.type === 'elf' || currentPlayer.type === 'mage') && rangedTargets.length > 0) {
+                     targetDiv.appendChild(createButton(`Lançar Magia`, () => openMagicModal(rangedTargets), 'bg-indigo-600 hover:bg-indigo-700', mainActionDisabled));
+                }
+
+                const adjTraps = getAdjacentTraps(currentPlayer);
+                if(adjTraps.length > 0) {
+                    targetDiv.appendChild(createButton(`Desarmar Armadilha`, () => handleDisarmTrap(adjTraps[0]), 'bg-cyan-700 hover:bg-cyan-800', mainActionDisabled));
+                }
+                const currentRoomId = getCurrentRoomId(currentPlayer.x, currentPlayer.y);
+                const missionRooms = missions[currentMissionIndex].rooms;
+                if (currentRoomId && !missionRooms[currentRoomId].hasBeenSearched) {
+                    targetDiv.appendChild(createButton('Procurar Tesouro', () => handleSearch('treasure'), 'bg-yellow-600 hover:bg-yellow-700', mainActionDisabled));
+                    targetDiv.appendChild(createButton('Procurar Armadilhas', () => handleSearch('trap'), 'bg-teal-600 hover:bg-teal-700', mainActionDisabled));
+                }
+                
+                if(targetDiv.children.length === 0){
+                    targetDiv.innerHTML = `<p class="text-gray-400 text-center">Nenhuma ação disponível.</p>`;
+                }
+            }
+        }
+        
+        function openMagicModal(targets) {
+            const currentPlayer = heroes[currentPlayerIndex];
+            if (!currentPlayer.spellbook) return;
+
+            spellSelectionDiv.innerHTML = '';
+            magicTargetSelectionDiv.innerHTML = '';
+
+            const spellLimit = (currentPlayer.type === 'mage') ? 3 : 1;
+            const inputType = (currentPlayer.type === 'mage') ? 'checkbox' : 'radio';
+
+            const spellHeader = document.createElement('h3');
+            spellHeader.className = 'text-xl text-amber-300';
+            spellHeader.textContent = 'Escolha suas Magias:';
+            spellSelectionDiv.appendChild(spellHeader);
+
+            currentPlayer.spellbook.forEach(spellKey => {
+                const spell = spells[spellKey];
+                const spellId = `spell-${spellKey}`;
+                const wrapper = document.createElement('div');
+                const input = document.createElement('input');
+                input.type = inputType;
+                input.id = spellId;
+                input.name = "spell";
+                input.value = spellKey;
+                input.className = 'spell-checkbox hidden';
+                input.onchange = () => {
+                    if (inputType === 'checkbox') {
+                        const checked = spellSelectionDiv.querySelectorAll('input:checked');
+                        if (checked.length > spellLimit) {
+                            input.checked = false;
+                        }
+                    }
+                    castSpellBtn.disabled = !isSpellCastable();
+                };
+
+                const label = document.createElement('label');
+                label.htmlFor = spellId;
+                label.textContent = spell.name;
+                label.className = 'block p-2 border-2 border-gray-600 rounded cursor-pointer hover:bg-gray-700';
+
+                wrapper.appendChild(input);
+                wrapper.appendChild(label);
+                spellSelectionDiv.appendChild(wrapper);
+            });
+
+            const targetHeader = document.createElement('h3');
+            targetHeader.className = 'text-xl text-amber-300';
+            targetHeader.textContent = 'Escolha um Alvo:';
+            magicTargetSelectionDiv.appendChild(targetHeader);
+
+            targets.forEach(monster => {
+                const targetId = `target-${monster.uid}`;
+                const wrapper = document.createElement('div');
+                const input = document.createElement('input');
+                input.type = 'radio';
+                input.id = targetId;
+                input.name = "target";
+                input.value = monster.uid;
+                input.className = 'hidden spell-checkbox';
+                input.onchange = () => {
+                    castSpellBtn.disabled = !isSpellCastable();
+                };
+
+                const label = document.createElement('label');
+                label.htmlFor = targetId;
+                label.textContent = `${monster.name} (${monster.vida} Vida)`;
+                label.className = 'block p-2 border-2 border-gray-600 rounded cursor-pointer hover:bg-gray-700';
+                
+                wrapper.appendChild(input);
+                wrapper.appendChild(label);
+                magicTargetSelectionDiv.appendChild(wrapper);
+            });
+
+            castSpellBtn.disabled = true;
+            toggleModal('magic-modal', true);
+        }
+
+        function isSpellCastable() {
+            const selectedSpell = spellSelectionDiv.querySelector('input[name="spell"]:checked');
+            const selectedTarget = magicTargetSelectionDiv.querySelector('input[name="target"]:checked');
+            return selectedSpell && selectedTarget;
+        }
+
+        function handleCastSpell() {
+            const selectedSpells = Array.from(spellSelectionDiv.querySelectorAll('input[name="spell"]:checked')).map(el => el.value);
+            const selectedTargetInput = magicTargetSelectionDiv.querySelector('input[name="target"]:checked');
+            
+            if (selectedSpells.length === 0 || !selectedTargetInput) {
+                return;
+            }
+
+            const monsterId = parseInt(selectedTargetInput.value);
+            const magicBonus = (selectedSpells.length > 1) ? 1 : 0; 
+            
+            const currentPlayer = heroes[currentPlayerIndex];
+            
+            if (currentPlayer.mana < selectedSpells.length) {
+                logMessage("Mana insuficiente!", "bg-red-800 border-red-500 text-white");
+                toggleModal('magic-modal', false);
+                return;
+            }
+            
+            currentPlayer.mana -= selectedSpells.length;
+            currentPlayer.spellsUsed.push(...selectedSpells);
+            
+            handleAttack(monsterId, true, magicBonus);
+            
+            toggleModal('magic-modal', false);
+        }
+
+
+        init();
+    </script>
+</body>
+</html>
